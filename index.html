@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural Net Lab — Live Training Visualizer</title>
+<style>
+/* ============================================================
+   ŠTÝLY (CSS) — tmavá moderná téma, glassmorphism panely
+   ============================================================ */
+:root{
+  --bg0:#070912;            /* najtmavšie pozadie */
+  --bg1:#0c1022;
+  --glass:rgba(22,28,48,0.55);
+  --glass-brd:rgba(120,150,255,0.16);
+  --txt:#e8ecff;
+  --muted:#8a93b8;
+  --accent:#5ca8ff;        /* modrá = kladná váha */
+  --accent2:#7c5cff;
+  --pos:#4f9bff;           /* kladné váhy */
+  --neg:#ff5c7a;           /* záporné váhy */
+  --ok:#39e6a8;
+  --warn:#ffcf5c;
+  --bad:#ff5c7a;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:
+    radial-gradient(1200px 800px at 15% -10%, #16204a 0%, transparent 60%),
+    radial-gradient(1000px 700px at 110% 10%, #2a1450 0%, transparent 55%),
+    var(--bg0);
+  color:var(--txt);
+  font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  font-size:13px;
+  -webkit-font-smoothing:antialiased;
+}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+h1,h2,h3{margin:0;font-weight:650}
+.app{display:flex;flex-direction:column;min-height:100vh;padding:14px;gap:12px}
+
+/* ---- Hlavička ---- */
+header.top{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:12px 18px;border-radius:16px;
+  background:var(--glass);backdrop-filter:blur(14px);
+  border:1px solid var(--glass-brd);
+}
+.brand{display:flex;align-items:center;gap:12px}
+.brand .dot{width:12px;height:12px;border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  box-shadow:0 0 18px var(--accent)}
+.brand h1{font-size:17px;letter-spacing:.3px}
+.brand small{color:var(--muted);font-size:11px;display:block}
+.spacer{flex:1}
+
+/* ---- Tlačidlá ---- */
+.btn{
+  appearance:none;border:1px solid var(--glass-brd);
+  background:rgba(120,150,255,0.08);color:var(--txt);
+  padding:8px 14px;border-radius:10px;cursor:pointer;font-size:12.5px;
+  font-weight:600;transition:.15s;display:inline-flex;align-items:center;gap:7px;
+}
+.btn:hover{background:rgba(120,150,255,0.18);border-color:var(--accent)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:#06122c}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.warn{border-color:rgba(255,140,140,.4)}
+.btn .k{font-family:var(--mono);font-size:10px;opacity:.6;border:1px solid currentColor;border-radius:4px;padding:0 4px}
+
+/* ---- Panely ---- */
+.panel{
+  background:var(--glass);backdrop-filter:blur(14px);
+  border:1px solid var(--glass-brd);border-radius:16px;padding:14px;
+  position:relative;overflow:hidden;
+}
+.panel > h3{font-size:12px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:1.4px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.panel > h3 .tag{margin-left:auto;color:var(--txt);font-size:11px;
+  background:rgba(120,150,255,.1);padding:2px 8px;border-radius:20px;letter-spacing:.5px}
+
+/* ---- Layout mriežka ---- */
+.grid{display:grid;gap:12px;grid-template-columns:1.55fr 1fr;align-items:start}
+.col{display:flex;flex-direction:column;gap:12px}
+.row{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}}
+
+/* ---- Ovládacie prvky / hyperparametre ---- */
+.controls{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+.ctl{display:flex;flex-direction:column;gap:5px;min-width:90px}
+.ctl label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.ctl input[type=range]{width:120px;accent-color:var(--accent)}
+.ctl input[type=text],.ctl input[type=number],.ctl select{
+  background:rgba(8,12,28,.7);color:var(--txt);border:1px solid var(--glass-brd);
+  border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:12px;width:120px;
+}
+.ctl .val{font-family:var(--mono);color:var(--accent);font-size:12px}
+.hint{color:var(--warn);font-size:10.5px;margin-top:4px;opacity:.0;transition:.2s}
+.hint.show{opacity:1}
+
+/* ---- Štatistiky ---- */
+.stats{display:flex;flex-wrap:wrap;gap:18px}
+.stat{display:flex;flex-direction:column}
+.stat .v{font-family:var(--mono);font-size:19px;font-weight:600}
+.stat .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.stat .v.ok{color:var(--ok)} .stat .v.acc{color:var(--accent)}
+
+canvas{display:block;max-width:100%}
+.netwrap{width:100%;background:radial-gradient(900px 500px at 30% 20%,rgba(40,60,130,.18),transparent 70%);border-radius:12px}
+
+/* ---- Drawing pad ---- */
+.padwrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+#drawPad{border-radius:12px;background:#05070f;cursor:crosshair;
+  border:1px solid var(--glass-brd);touch-action:none}
+.probbars{flex:1;min-width:200px;display:flex;flex-direction:column;gap:5px}
+.pbar{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px}
+.pbar .lab{width:14px;color:var(--muted);text-align:center}
+.pbar .track{flex:1;height:15px;background:rgba(8,12,28,.7);border-radius:7px;overflow:hidden;position:relative}
+.pbar .fill{height:100%;width:0;border-radius:7px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .12s}
+.pbar.top .fill{background:linear-gradient(90deg,var(--ok),#7cf0c0)}
+.pbar .pct{width:46px;text-align:right;color:var(--muted)}
+.pbar.top .pct{color:var(--ok)}
+
+/* ---- Confusion matrix ---- */
+.cm{display:grid;grid-template-columns:auto repeat(10,1fr);gap:2px;font-family:var(--mono);font-size:9.5px}
+.cm .h{color:var(--muted);text-align:center;padding:2px}
+.cm .cell{aspect-ratio:1;border-radius:3px;display:flex;align-items:center;justify-content:center;
+  color:#cfe0ff;font-size:9px;background:#0c1430}
+.cm .diag{outline:1px solid rgba(80,230,168,.5)}
+
+/* ---- Per-class bars ---- */
+.pcbars{display:flex;flex-direction:column;gap:4px}
+.pcbar{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px}
+.pcbar .lab{width:14px;color:var(--muted);text-align:center}
+.pcbar .track{flex:1;height:11px;background:rgba(8,12,28,.7);border-radius:6px;overflow:hidden}
+.pcbar .fill{height:100%;background:linear-gradient(90deg,var(--ok),var(--accent));transition:width .3s}
+.pcbar .pct{width:42px;text-align:right;color:var(--muted)}
+
+.sampleViewer{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+#sampleCanvas{border-radius:10px;background:#05070f;border:1px solid var(--glass-brd);image-rendering:pixelated}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--muted);flex-wrap:wrap;margin-top:8px}
+.legend .it{display:flex;align-items:center;gap:6px}
+.swatch{width:22px;height:8px;border-radius:4px}
+footer.note{color:var(--muted);font-size:11px;text-align:center;padding:6px 0 14px;line-height:1.6}
+a{color:var(--accent)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  background:var(--glass);border:1px solid var(--glass-brd);backdrop-filter:blur(10px);
+  padding:9px 16px;border-radius:10px;font-size:12px;opacity:0;pointer-events:none;transition:.25s}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ======================= HLAVIČKA + GLOBÁLNE OVLÁDANIE ======================= -->
+  <header class="top">
+    <div class="brand">
+      <div class="dot"></div>
+      <div>
+        <h1>Neural&nbsp;Net&nbsp;Lab</h1>
+        <small>Plne prepojená sieť učená od nuly &middot; čistý vanilla JS</small>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn primary" id="btnTrain"><span>▶ Train</span><span class="k">Space</span></button>
+    <button class="btn" id="btnStep">⏭ Step<span class="k">S</span></button>
+    <button class="btn warn" id="btnReset">↺ Reset<span class="k">R</span></button>
+  </header>
+
+  <!-- ======================= ŠTATISTIKY ======================= -->
+  <section class="panel">
+    <div class="stats">
+      <div class="stat"><span class="v num" id="stEpoch">0</span><span class="l">Epoch</span></div>
+      <div class="stat"><span class="v num" id="stBatch">0</span><span class="l">Batch</span></div>
+      <div class="stat"><span class="v num" id="stLoss">—</span><span class="l">Loss</span></div>
+      <div class="stat"><span class="v num acc" id="stTrainAcc">—</span><span class="l">Train acc</span></div>
+      <div class="stat"><span class="v num ok" id="stTestAcc">—</span><span class="l">Test acc</span></div>
+      <div class="stat"><span class="v num" id="stBps">0</span><span class="l">Batches / s</span></div>
+      <div class="spacer"></div>
+      <div class="stat"><span class="v num" id="stArch">784·16·16·10</span><span class="l">Architecture</span></div>
+    </div>
+  </section>
+
+  <!-- ======================= HYPERPARAMETRE ======================= -->
+  <section class="panel">
+    <h3>Hyperparameters <span class="tag" id="liveTag">live</span></h3>
+    <div class="controls">
+      <div class="ctl">
+        <label>Learning rate <span class="val" id="lrVal">0.005</span></label>
+        <input type="range" id="lr" min="-4" max="-0.3" step="0.05" value="-2.3">
+      </div>
+      <div class="ctl">
+        <label>Batch size <span class="val" id="bsVal">16</span></label>
+        <input type="range" id="bs" min="1" max="64" step="1" value="16">
+      </div>
+      <div class="ctl">
+        <label>Optimizer</label>
+        <select id="opt">
+          <option value="sgd">SGD</option>
+          <option value="momentum">Momentum</option>
+          <option value="adam" selected>Adam</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label>Speed (batches / frame) <span class="val" id="spVal">6</span></label>
+        <input type="range" id="sp" min="1" max="40" step="1" value="6">
+      </div>
+      <div class="ctl">
+        <label>Hidden layers (reset)</label>
+        <input type="text" id="arch" value="16,16" spellcheck="false">
+        <div class="hint" id="archHint">⚠ Press Reset to apply architecture</div>
+      </div>
+      <div class="ctl">
+        <label>Dataset size / class</label>
+        <select id="dssize">
+          <option value="40">40 (fast)</option>
+          <option value="80" selected>80</option>
+          <option value="120">120 (slow)</option>
+        </select>
+        <div class="hint" id="dsHint">⚠ Press Reset to regenerate</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= HLAVNÁ MRIEŽKA ======================= -->
+  <div class="grid">
+
+    <!-- ĽAVÝ STĹPEC -->
+    <div class="col">
+      <section class="panel">
+        <h3>Network &amp; live activations
+          <span class="tag" id="watchTag">watching test #0</span></h3>
+        <div class="netwrap"><canvas id="netCanvas"></canvas></div>
+        <div class="legend">
+          <div class="it"><span class="swatch" style="background:linear-gradient(90deg,#0c1430,#4f9bff)"></span> + weight</div>
+          <div class="it"><span class="swatch" style="background:linear-gradient(90deg,#0c1430,#ff5c7a)"></span> − weight</div>
+          <div class="it"><span class="swatch" style="background:linear-gradient(90deg,#0c1430,#fff)"></span> activation</div>
+          <button class="btn" id="btnWatch" style="padding:4px 10px;font-size:11px">🎞 Watch a prediction</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Sample viewer</h3>
+        <div class="sampleViewer">
+          <canvas id="sampleCanvas" width="112" height="112"></canvas>
+          <div>
+            <div class="num" style="font-size:14px">label: <b id="sampLabel">—</b>
+              &nbsp; pred: <b id="sampPred" class="num">—</b></div>
+            <div class="num" style="color:var(--muted);font-size:11px;margin-top:6px" id="sampSet">—</div>
+            <div style="margin-top:8px;display:flex;gap:8px">
+              <button class="btn" id="btnNextSample" style="padding:5px 10px;font-size:11px">↻ Random test sample</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- PRAVÝ STĹPEC -->
+    <div class="col">
+      <section class="panel">
+        <h3>Loss <span class="tag">cross-entropy</span></h3>
+        <canvas id="lossCanvas"></canvas>
+      </section>
+      <section class="panel">
+        <h3>Accuracy <span class="tag">train / test</span></h3>
+        <canvas id="accCanvas"></canvas>
+      </section>
+      <div class="row">
+        <section class="panel">
+          <h3>Confusion matrix</h3>
+          <div class="cm" id="cm"></div>
+        </section>
+        <section class="panel">
+          <h3>Per-class accuracy</h3>
+          <div class="pcbars" id="pcbars"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= KRESLIACA PLOCHA ======================= -->
+  <section class="panel">
+    <h3>Draw a digit — the trained net classifies live ✍️</h3>
+    <div class="padwrap">
+      <div>
+        <canvas id="drawPad" width="280" height="280"></canvas>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn" id="btnClear">🧹 Clear</button>
+          <span class="num" style="color:var(--muted);align-self:center;font-size:11px">draw with mouse / finger</span>
+        </div>
+      </div>
+      <div class="probbars" id="drawProbs"></div>
+    </div>
+  </section>
+
+  <footer class="note">
+    Built from scratch — no ML libraries. The neural network (forward pass, manual backpropagation,
+    SGD&nbsp;/&nbsp;Momentum&nbsp;/&nbsp;Adam) is implemented in vanilla JS with Float32Array weights.<br>
+    Dataset: a learnable MNIST-style set is <b>generated procedurally on the fly</b> by rendering the
+    glyphs 0–9 to an offscreen canvas with random rotation, scale, translation, stroke jitter and noise.
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ================================================================================
+   SEKCIA 1 — JADRO NEURÓNOVEJ SIETE (forward / backward / optimizéry)
+   Plne prepojená dopredná sieť. Všetky váhy a biasy sú vo Float32Array.
+   ================================================================================ */
+
+// Generátor štandardného normálneho rozdelenia (Box–Muller) — pre inicializáciu váh.
+function randn(){
+  let u=0,v=0;
+  while(u===0)u=Math.random();
+  while(v===0)v=Math.random();
+  return Math.sqrt(-2.0*Math.log(u))*Math.cos(2.0*Math.PI*v);
+}
+
+// Jedna plne prepojená vrstva: výstup = aktivácia(W·vstup + b).
+// W má tvar (nOut x nIn) uložený riadkovo: W[o*nIn + i].
+class Layer{
+  constructor(nIn,nOut,isOutput){
+    this.nIn=nIn; this.nOut=nOut; this.isOutput=isOutput;
+    this.W=new Float32Array(nOut*nIn);
+    this.b=new Float32Array(nOut);
+    // He inicializácia pre ReLU vrstvy, Xavier pre výstupnú (softmax) vrstvu.
+    const std=isOutput?Math.sqrt(1/nIn):Math.sqrt(2/nIn);
+    for(let i=0;i<this.W.length;i++)this.W[i]=randn()*std;
+    // Akumulátory gradientov (sčítané cez mini-batch).
+    this.dW=new Float32Array(nOut*nIn);
+    this.db=new Float32Array(nOut);
+    // Stav optimizéra (Adam momenty / momentum rýchlosti).
+    this.mW=new Float32Array(nOut*nIn); this.vW=new Float32Array(nOut*nIn);
+    this.mb=new Float32Array(nOut);     this.vb=new Float32Array(nOut);
+    // Vyrovnávacie pamäte dopredného prechodu.
+    this.z=new Float32Array(nOut);   // predaktivácia
+    this.a=new Float32Array(nOut);   // aktivácia
+    this.delta=new Float32Array(nOut); // gradient cez z (∂L/∂z)
+    this.input=null;                 // referencia na vstup do vrstvy (a predošlej vrstvy)
+  }
+}
+
+// Sieť = zoznam vrstiev. sizes napr. [784,16,16,10].
+class Network{
+  constructor(sizes){
+    this.sizes=sizes.slice();
+    this.layers=[];
+    for(let l=1;l<sizes.length;l++){
+      const isOut=(l===sizes.length-1);
+      this.layers.push(new Layer(sizes[l-1],sizes[l],isOut));
+    }
+    this.t=0; // krok optimizéra (pre Adam bias-correction)
+  }
+
+  // --- DOPREDNÝ PRECHOD ---------------------------------------------------------
+  // Vstup x (Float32Array dĺžky 784). Ukladá aktivácie pre spätný prechod.
+  // Skryté vrstvy: ReLU. Výstupná vrstva: softmax.
+  forward(x){
+    let inp=x;
+    for(let li=0;li<this.layers.length;li++){
+      const L=this.layers[li];
+      L.input=inp;
+      const {W,b,z,a,nIn,nOut}=L;
+      // z = W·inp + b
+      for(let o=0;o<nOut;o++){
+        let s=b[o];
+        const base=o*nIn;
+        for(let i=0;i<nIn;i++)s+=W[base+i]*inp[i];
+        z[o]=s;
+      }
+      if(L.isOutput){
+        // softmax (numericky stabilný odčítaním maxima)
+        let mx=-Infinity;
+        for(let o=0;o<nOut;o++)if(z[o]>mx)mx=z[o];
+        let sum=0;
+        for(let o=0;o<nOut;o++){const e=Math.exp(z[o]-mx);a[o]=e;sum+=e;}
+        for(let o=0;o<nOut;o++)a[o]/=sum;
+      }else{
+        // ReLU
+        for(let o=0;o<nOut;o++)a[o]=z[o]>0?z[o]:0;
+      }
+      inp=a;
+    }
+    return this.layers[this.layers.length-1].a; // pravdepodobnosti tried
+  }
+
+  // --- SPÄTNÝ PRECHOD (backpropagation) -----------------------------------------
+  // Pre softmax + cross-entropy platí krásne zjednodušenie: delta výstupu = a − y.
+  // Akumuluje gradienty do dW/db (NEnuluje ich — to robí trainBatch pred batchom).
+  backward(label){
+    const last=this.layers.length-1;
+    const out=this.layers[last];
+    // 1) Gradient na výstupe: ∂L/∂z = a − one_hot(label)
+    for(let o=0;o<out.nOut;o++){
+      out.delta[o]=out.a[o]-(o===label?1:0);
+    }
+    // 2) Šírime delta späť cez vrstvy.
+    for(let li=last;li>=0;li--){
+      const L=this.layers[li];
+      const inp=L.input;
+      // Akumulácia gradientov váh a biasov pre túto vrstvu:
+      //   dW[o,i] += delta[o] * input[i]   ;   db[o] += delta[o]
+      for(let o=0;o<L.nOut;o++){
+        const d=L.delta[o];
+        if(d!==0){
+          const base=o*L.nIn;
+          for(let i=0;i<L.nIn;i++)L.dW[base+i]+=d*inp[i];
+        }
+        L.db[o]+=d;
+      }
+      // Výpočet delta pre predošlú vrstvu (ak nejaká je):
+      //   da_prev[i] = Σ_o W[o,i]*delta[o]   ;   delta_prev = da_prev * ReLU'(z_prev)
+      if(li>0){
+        const prev=this.layers[li-1];
+        const pd=prev.delta, pz=prev.z;
+        for(let i=0;i<L.nIn;i++)pd[i]=0;
+        for(let o=0;o<L.nOut;o++){
+          const d=L.delta[o];
+          if(d===0)continue;
+          const base=o*L.nIn;
+          for(let i=0;i<L.nIn;i++)pd[i]+=L.W[base+i]*d;
+        }
+        // ReLU derivácia: 1 ak z>0 inak 0
+        for(let i=0;i<prev.nOut;i++)pd[i]*= (pz[i]>0?1:0);
+      }
+    }
+  }
+
+  zeroGrad(){
+    for(const L of this.layers){L.dW.fill(0);L.db.fill(0);}
+  }
+
+  // --- KROK OPTIMIZÉRA ----------------------------------------------------------
+  // grad je už spriemerovaný cez batch (delíme scale=1/batchSize).
+  step(lr,optimizer,scale){
+    this.t++;
+    const b1=0.9,b2=0.999,eps=1e-8,mu=0.9;
+    const t=this.t;
+    for(const L of this.layers){
+      const {W,b,dW,db,mW,vW,mb,vb}=L;
+      // Pomocná funkcia na aplikáciu na pole váh aj biasov by bola pomalšia —
+      // preto je logika rozpísaná inline pre rýchlosť.
+      if(optimizer==='sgd'){
+        for(let i=0;i<W.length;i++)W[i]-=lr*dW[i]*scale;
+        for(let o=0;o<b.length;o++)b[o]-=lr*db[o]*scale;
+      }else if(optimizer==='momentum'){
+        for(let i=0;i<W.length;i++){mW[i]=mu*mW[i]-lr*dW[i]*scale;W[i]+=mW[i];}
+        for(let o=0;o<b.length;o++){mb[o]=mu*mb[o]-lr*db[o]*scale;b[o]+=mb[o];}
+      }else{ // adam
+        const c1=1-Math.pow(b1,t), c2=1-Math.pow(b2,t);
+        for(let i=0;i<W.length;i++){
+          const g=dW[i]*scale;
+          mW[i]=b1*mW[i]+(1-b1)*g;
+          vW[i]=b2*vW[i]+(1-b2)*g*g;
+          W[i]-=lr*(mW[i]/c1)/(Math.sqrt(vW[i]/c2)+eps);
+        }
+        for(let o=0;o<b.length;o++){
+          const g=db[o]*scale;
+          mb[o]=b1*mb[o]+(1-b1)*g;
+          vb[o]=b2*vb[o]+(1-b2)*g*g;
+          b[o]-=lr*(mb[o]/c1)/(Math.sqrt(vb[o]/c2)+eps);
+        }
+      }
+    }
+  }
+
+  // Tréning jednej mini-batch. Vráti priemernú cross-entropy stratu batchu.
+  trainBatch(X,Y,indices,lr,optimizer){
+    this.zeroGrad();
+    let loss=0;
+    const out=this.layers[this.layers.length-1];
+    for(const idx of indices){
+      const probs=this.forward(X[idx]);
+      const label=Y[idx];
+      // cross-entropy: −log(p_correct)
+      loss+=-Math.log(Math.max(probs[label],1e-12));
+      this.backward(label);
+    }
+    const n=indices.length;
+    this.step(lr,optimizer,1/n); // spriemerovaný gradient
+    return loss/n;
+  }
+
+  // Predikcia triedy (argmax) bez ukladania pre tréning — používa forward.
+  predict(x){
+    const p=this.forward(x);
+    let bi=0,bv=-Infinity;
+    for(let o=0;o<p.length;o++)if(p[o]>bv){bv=p[o];bi=o;}
+    return bi;
+  }
+}
+
+/* ================================================================================
+   SEKCIA 2 — DATASET (procedurálne generované číslice 0–9)
+   Vykreslíme glyf číslice na offscreen 28x28 canvas s náhodnou rotáciou, mierkou,
+   posunom a šumom. Tým vznikne učiteľný MNIST-podobný dataset bez sťahovania.
+   ================================================================================ */
+const IMG=28, PIX=IMG*IMG;
+const FONTS=['bold 22px Georgia','bold 22px "Times New Roman"','bold 21px Arial',
+             'bold 23px "Courier New"','600 22px Verdana','bold 20px "Comic Sans MS"'];
+
+// Offscreen canvas na renderovanie glyfov.
+const _oc=document.createElement('canvas'); _oc.width=IMG; _oc.height=IMG;
+const _octx=_oc.getContext('2d',{willReadFrequently:true});
+
+// Vykreslí jednu vzorku číslice `digit` do Float32Array(784) s augmentáciou.
+function renderDigit(digit){
+  const ctx=_octx;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,IMG,IMG);
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,IMG,IMG);
+  // Náhodné transformácie (augmentácia).
+  const angle=(Math.random()-0.5)*0.5;          // ±0.25 rad rotácia
+  const scale=0.8+Math.random()*0.4;            // 0.8–1.2 mierka
+  const dx=(Math.random()-0.5)*5;               // posun X
+  const dy=(Math.random()-0.5)*5;               // posun Y
+  ctx.save();
+  ctx.translate(IMG/2+dx,IMG/2+dy);
+  ctx.rotate(angle);
+  ctx.scale(scale,scale);
+  ctx.fillStyle='#fff';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.font=FONTS[(Math.random()*FONTS.length)|0];
+  ctx.fillText(String(digit),0,1);
+  ctx.restore();
+  // Načítanie pixelov → grayscale [0,1] + šum.
+  const data=ctx.getImageData(0,0,IMG,IMG).data;
+  const out=new Float32Array(PIX);
+  for(let p=0;p<PIX;p++){
+    let v=data[p*4]/255;                  // R kanál (biela na čiernom)
+    v+=(Math.random()-0.5)*0.12;          // pridaný šum
+    out[p]=v<0?0:(v>1?1:v);
+  }
+  return out;
+}
+
+// Vygeneruje celý dataset: perClass vzoriek na číslicu, rozdelené train/test (80/20).
+function buildDataset(perClass){
+  const trainX=[],trainY=[],testX=[],testY=[];
+  const testPer=Math.max(8,Math.round(perClass*0.2));
+  for(let d=0;d<10;d++){
+    for(let k=0;k<perClass;k++){trainX.push(renderDigit(d));trainY.push(d);}
+    for(let k=0;k<testPer;k++){testX.push(renderDigit(d));testY.push(d);}
+  }
+  return {trainX,trainY:Int32Array.from(trainY),testX,testY:Int32Array.from(testY)};
+}
+
+/* ================================================================================
+   SEKCIA 3 — GLOBÁLNY STAV A TRÉNINGOVÝ CYKLUS
+   ================================================================================ */
+const state={
+  net:null, data:null,
+  arch:[784,16,16,10],
+  lr:0.05, batchSize:16, optimizer:'adam', speed:6,
+  perClass:80,
+  training:false,
+  epoch:0, batch:0,
+  order:[], orderPos:0,
+  lossHist:[], trainAccHist:[], testAccHist:[],
+  confusion:new Int32Array(100),
+  perClassAcc:new Float32Array(10),
+  watchSample:{set:'test',idx:0},
+  bps:0, _bpsCount:0, _bpsT:performance.now(),
+  anim:null, // stav forward-pass animácie
+};
+
+// Náhodné premiešanie indexov train sady (Fisher–Yates) — nové poradie pre epochu.
+function reshuffle(){
+  const n=state.data.trainX.length;
+  state.order=Array.from({length:n},(_,i)=>i);
+  for(let i=n-1;i>0;i--){const j=(Math.random()*(i+1))|0;[state.order[i],state.order[j]]=[state.order[j],state.order[i]];}
+  state.orderPos=0;
+}
+
+// Inicializácia / reset siete a datasetu podľa UI.
+function initAll(regenData){
+  state.arch=parseArch();
+  state.net=new Network(state.arch);
+  if(regenData||!state.data){
+    toast('Generating dataset…');
+    state.data=buildDataset(state.perClass);
+  }
+  state.epoch=0; state.batch=0;
+  state.lossHist=[]; state.trainAccHist=[]; state.testAccHist=[];
+  state.confusion=new Int32Array(100);
+  state.perClassAcc=new Float32Array(10);
+  reshuffle();
+  state.watchSample={set:'test',idx:0};
+  updateArchLabel();
+  evaluateAndRecord(); // počiatočná (náhodná) presnosť
+  refreshSampleViewer();
+  buildProbBars(); buildConfusion(); buildPerClass();
+  renderAll();
+}
+
+function parseArch(){
+  const raw=document.getElementById('arch').value;
+  let hidden=raw.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>n>0&&n<=256);
+  if(hidden.length===0)hidden=[16,16];
+  return [784,...hidden,10];
+}
+
+// Jeden tréningový krok = jedna mini-batch.
+function trainOneBatch(){
+  const {data,net}=state;
+  if(state.orderPos+state.batchSize>state.order.length){
+    state.epoch++; reshuffle();
+  }
+  const idx=state.order.slice(state.orderPos,state.orderPos+state.batchSize);
+  state.orderPos+=state.batchSize;
+  const loss=net.trainBatch(data.trainX,data.trainY,idx,state.lr,state.optimizer);
+  state.batch++;
+  state._bpsCount++;
+  state.lossHist.push(loss);
+  if(state.lossHist.length>600)state.lossHist.shift();
+  return loss;
+}
+
+// Vyhodnotenie presnosti na train aj test sade + confusion matrix + per-class.
+function evaluateAndRecord(){
+  const {data,net}=state;
+  // Train accuracy (na podvzorke pre rýchlosť, ak je veľká).
+  let tc=0, tn=Math.min(data.trainX.length,400);
+  for(let i=0;i<tn;i++){const j=(Math.random()*data.trainX.length)|0;
+    if(net.predict(data.trainX[j])===data.trainY[j])tc++;}
+  const trainAcc=tc/tn;
+  // Test accuracy na celej test sade + confusion matrix.
+  const cm=new Int32Array(100);
+  const perTotal=new Int32Array(10), perOk=new Int32Array(10);
+  let ok=0;
+  for(let i=0;i<data.testX.length;i++){
+    const pred=net.predict(data.testX[i]);
+    const lab=data.testY[i];
+    cm[lab*10+pred]++;
+    perTotal[lab]++; if(pred===lab){ok++;perOk[lab]++;}
+  }
+  const testAcc=ok/data.testX.length;
+  state.confusion=cm;
+  for(let d=0;d<10;d++)state.perClassAcc[d]=perTotal[d]?perOk[d]/perTotal[d]:0;
+  state.trainAccHist.push(trainAcc);
+  state.testAccHist.push(testAcc);
+  if(state.trainAccHist.length>600){state.trainAccHist.shift();state.testAccHist.shift();}
+  return {trainAcc,testAcc};
+}
+
+/* ================================================================================
+   SEKCIA 4 — VIZUALIZÁCIA: diagram siete + živé aktivácie
+   ================================================================================ */
+const netCanvas=document.getElementById('netCanvas');
+const nctx=netCanvas.getContext('2d');
+const MAX_NODES=20; // max. zobrazených neurónov na vrstvu (subsampling)
+
+// Pripraví HiDPI canvas na danú CSS veľkosť.
+// Backing store meníme len pri zmene rozmeru — inak by sme každý frame
+// realokovali plátno (trhanie, nižšie FPS).
+function fitCanvas(cv,ctx,cssW,cssH){
+  const dpr=window.devicePixelRatio||1;
+  const bw=Math.round(cssW*dpr), bh=Math.round(cssH*dpr);
+  if(cv.width!==bw||cv.height!==bh){
+    cv.style.width=cssW+'px'; cv.style.height=cssH+'px';
+    cv.width=bw; cv.height=bh;
+  }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w:cssW,h:cssH};
+}
+
+// Vráti aktivácie aktuálne sledovanej vzorky (pre vykreslenie jasu neurónov).
+function getWatchedActivations(){
+  const ws=state.watchSample;
+  const X=ws.set==='draw'?state.drawVec:(ws.set==='test'?state.data.testX[ws.idx]:state.data.trainX[ws.idx]);
+  if(!X)return null;
+  state.net.forward(X);
+  return X;
+}
+
+// Hlavné vykreslenie diagramu siete.
+function drawNetwork(){
+  const cssW=netCanvas.parentElement.clientWidth;
+  const cssH=Math.max(300,Math.min(440,cssW*0.55));
+  const {w,h}=fitCanvas(netCanvas,nctx,cssW,cssH);
+  nctx.clearRect(0,0,w,h);
+
+  const input=getWatchedActivations();
+  const net=state.net;
+  const nLayers=net.layers.length+1; // vrátane vstupu
+  const padL=18,padR=24,padT=18,padB=18;
+  const usableW=w-padL-padR;
+  const colX=[];
+  for(let i=0;i<nLayers;i++)colX.push(padL+ usableW*(i/(nLayers-1)));
+
+  // Pozície neurónov pre každú vrstvu (vstup zobrazíme ako 28x28 mriežku zvlášť).
+  // displayCount/indexMap zabezpečuje subsampling veľkých vrstiev.
+  const layerNodes=[]; // {ys:[], map:[realIndex], count, sub:bool}
+  function makeNodes(size,colIndex){
+    const count=Math.min(size,MAX_NODES);
+    const ys=[]; const map=[];
+    const colH=h-padT-padB;
+    for(let i=0;i<count;i++){
+      const real=count<size?Math.floor(i*(size-1)/(count-1||1)):i;
+      map.push(real);
+      ys.push(padT + colH*( count===1?0.5:(i/(count-1)) ));
+    }
+    return {ys,map,count,sub:count<size,size};
+  }
+
+  // Vstupná vrstva ako mriežka 28x28 vľavo.
+  const gridSize=Math.min(h-padT-padB, usableW*0.16);
+  const gx0=padL, gy0=(h-gridSize)/2, cell=gridSize/IMG;
+  if(input){
+    for(let p=0;p<PIX;p++){
+      const v=input[p]; if(v<0.04)continue;
+      const r=(p/IMG)|0, c=p%IMG;
+      const g=Math.round(v*255);
+      nctx.fillStyle='rgb('+g+','+g+','+Math.min(255,g+30)+')';
+      nctx.fillRect(gx0+c*cell, gy0+r*cell, cell+0.6, cell+0.6);
+    }
+  }
+  nctx.strokeStyle='rgba(120,150,255,0.25)';
+  nctx.strokeRect(gx0,gy0,gridSize,gridSize);
+
+  // Skryté + výstupné vrstvy ako stĺpce krúžkov.
+  for(let li=0;li<net.layers.length;li++){
+    layerNodes.push(makeNodes(net.layers[li].nOut, li+1));
+  }
+  // x pozície stĺpcov krúžkov (po mriežke).
+  const circStartX=gx0+gridSize+40;
+  const circAreaW=w-padR-circStartX;
+  const circX=[];
+  for(let i=0;i<net.layers.length;i++)
+    circX.push(circStartX + (net.layers.length===1?circAreaW*0.5:circAreaW*(i/(net.layers.length-1))));
+
+  // --- SPOJENIA (čiary): farba = znamienko váhy, priehľadnosť = veľkosť ---------
+  // Vstup→1.skrytá: nekreslíme 784·N čiar, namiesto toho pár vzorkovaných lúčov z mriežky.
+  const firstNodes=layerNodes[0];
+  for(let n=0;n<firstNodes.count;n++){
+    nctx.strokeStyle='rgba(120,150,255,0.07)';
+    nctx.lineWidth=1;
+    nctx.beginPath();
+    nctx.moveTo(gx0+gridSize, gy0+gridSize/2);
+    nctx.lineTo(circX[0], firstNodes.ys[n]);
+    nctx.stroke();
+  }
+  // Medzi krúžkovými vrstvami kreslíme reálne váhy (sú malé).
+  for(let li=1;li<net.layers.length;li++){
+    const L=net.layers[li];
+    const A=layerNodes[li-1], B=layerNodes[li];
+    // normalizácia podľa max |W| pre pekné opacity
+    let mx=1e-6; for(let i=0;i<L.W.length;i++){const a=Math.abs(L.W[i]);if(a>mx)mx=a;}
+    for(let bi=0;bi<B.count;bi++){
+      const o=B.map[bi];
+      for(let ai=0;ai<A.count;ai++){
+        const i=A.map[ai];
+        const wv=L.W[o*L.nIn+i];
+        const op=Math.min(0.85,Math.abs(wv)/mx*0.9);
+        if(op<0.04)continue;
+        nctx.strokeStyle=(wv>=0?'rgba(79,155,255,':'rgba(255,92,122,')+op+')';
+        nctx.lineWidth=0.5+op*1.6;
+        nctx.beginPath();
+        nctx.moveTo(circX[li-1],A.ys[ai]);
+        nctx.lineTo(circX[li],B.ys[bi]);
+        nctx.stroke();
+      }
+    }
+  }
+
+  // Predikcia a správnosť sledovanej vzorky — počítané RAZ za frame
+  // z už dopredu spočítaných výstupných aktivácií (žiadne opakované forward prechody).
+  const outL=net.layers[net.layers.length-1];
+  let predIdx=0; for(let o=0;o<outL.nOut;o++) if(outL.a[o]>outL.a[predIdx]) predIdx=o;
+  let trueLab=-1;
+  if(state.watchSample.set==='test') trueLab=state.data.testY[state.watchSample.idx];
+  else if(state.watchSample.set==='train') trueLab=state.data.trainY[state.watchSample.idx];
+  const predCorrect=(trueLab>=0 && predIdx===trueLab);
+
+  // --- NEURÓNY (krúžky): jas = aktivácia -----------------------------------------
+  const animLayer=state.anim?state.anim.layer:-1;
+  for(let li=0;li<net.layers.length;li++){
+    const L=net.layers[li], nodes=layerNodes[li];
+    // pre normalizáciu aktivácií skrytých vrstiev
+    let amax=1e-6; for(let o=0;o<L.nOut;o++)if(L.a[o]>amax)amax=L.a[o];
+    const isOut=L.isOutput;
+    for(let n=0;n<nodes.count;n++){
+      const o=nodes.map[n];
+      const act=isOut?L.a[o]:(L.a[o]/amax);
+      const x=circX[li], y=nodes.ys[n];
+      const rad=isOut?11:Math.max(5,Math.min(9,9- (nodes.size>16?2:0)));
+      // žiara počas forward-pass animácie
+      let glow=0;
+      if(li===animLayer)glow=state.anim.pulse*act;
+      if(glow>0){
+        nctx.shadowColor='rgba(120,180,255,0.9)'; nctx.shadowBlur=14*glow;
+      }
+      const g=Math.round(30+act*225);
+      nctx.fillStyle='rgb('+g+','+g+','+Math.min(255,g+25)+')';
+      nctx.beginPath(); nctx.arc(x,y,rad,0,Math.PI*2); nctx.fill();
+      nctx.shadowBlur=0;
+      nctx.lineWidth=1; nctx.strokeStyle='rgba(160,180,255,0.35)';
+      nctx.stroke();
+      // popisky výstupných tried
+      if(isOut){
+        nctx.fillStyle='#cfe0ff'; nctx.font='11px monospace'; nctx.textAlign='left';
+        nctx.fillText(String(o), x+16, y+4);
+        // pravdepodobnosť ako malý bar
+        nctx.fillStyle='rgba(120,150,255,0.25)';
+        nctx.fillRect(x+28,y-4,40,8);
+        // predikovaná trieda: zelená ak správna, červená ak nesprávna; inak modrá
+        nctx.fillStyle=(o===predIdx)?(predCorrect?'#39e6a8':'#ff5c7a'):'#4f9bff';
+        nctx.fillRect(x+28,y-4,40*L.a[o],8);
+      }
+    }
+  }
+  // popis vrstiev
+  nctx.fillStyle='rgba(138,147,184,0.8)';nctx.font='10px monospace';nctx.textAlign='center';
+  nctx.fillText('input 28×28',gx0+gridSize/2,gy0+gridSize+13);
+  for(let li=0;li<net.layers.length;li++){
+    const lbl=net.layers[li].isOutput?'softmax':('hidden '+net.layers[li].nOut);
+    nctx.fillText(lbl,circX[li],h-4);
+  }
+}
+
+/* ================================================================================
+   SEKCIA 5 — GRAFY (loss, accuracy), confusion matrix, per-class bary
+   ================================================================================ */
+const lossCanvas=document.getElementById('lossCanvas');
+const lctx=lossCanvas.getContext('2d');
+const accCanvas=document.getElementById('accCanvas');
+const actx=accCanvas.getContext('2d');
+
+// Univerzálny čiarový graf na vlastnom canvase.
+function drawLineChart(cv,ctx,series,opts){
+  const cssW=cv.parentElement.clientWidth-2;
+  const cssH=opts.h||150;
+  const {w,h}=fitCanvas(cv,ctx,cssW,cssH);
+  ctx.clearRect(0,0,w,h);
+  const padL=38,padR=10,padT=12,padB=20;
+  const plotW=w-padL-padR, plotH=h-padT-padB;
+  // mriežka
+  ctx.strokeStyle='rgba(120,150,255,0.10)';ctx.lineWidth=1;ctx.fillStyle='rgba(138,147,184,0.8)';
+  ctx.font='9px monospace';ctx.textAlign='right';
+  const ymin=opts.ymin, ymax=opts.ymax;
+  for(let g=0;g<=4;g++){
+    const y=padT+plotH*(g/4);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(w-padR,y);ctx.stroke();
+    const val=ymax-(ymax-ymin)*(g/4);
+    ctx.fillText(opts.fmt?opts.fmt(val):val.toFixed(2),padL-5,y+3);
+  }
+  // série
+  let maxLen=0; for(const s of series)maxLen=Math.max(maxLen,s.data.length);
+  if(maxLen<2){ctx.textAlign='center';ctx.fillStyle='rgba(138,147,184,0.6)';
+    ctx.fillText('start training to see data',w/2,h/2);return;}
+  for(const s of series){
+    ctx.strokeStyle=s.color;ctx.lineWidth=1.8;ctx.beginPath();
+    const d=s.data, n=d.length;
+    for(let i=0;i<n;i++){
+      const x=padL+plotW*(i/(maxLen-1));
+      const yv=Math.max(ymin,Math.min(ymax,d[i]));
+      const y=padT+plotH*(1-(yv-ymin)/(ymax-ymin));
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // posledná hodnota
+    if(n>0){const last=d[n-1];ctx.fillStyle=s.color;ctx.textAlign='left';
+      ctx.fillText((opts.fmt?opts.fmt(last):last.toFixed(2)),padL+4,padT+10);}
+  }
+  // legenda
+  if(opts.legend){ctx.textAlign='left';let lx=padL+4;
+    for(const s of series){ctx.fillStyle=s.color;ctx.fillRect(lx,h-12,10,3);
+      ctx.fillText(s.name,lx+14,h-9);lx+=14+ctx.measureText(s.name).width+18;}}
+}
+
+function drawCharts(){
+  const lh=state.lossHist;
+  const lmax=Math.max(0.4,...(lh.length?lh.slice(-200):[2.4]));
+  drawLineChart(lossCanvas,lctx,[{name:'loss',color:'#7c5cff',data:lh}],
+    {ymin:0,ymax:Math.min(3,lmax*1.1),h:150});
+  drawLineChart(accCanvas,actx,[
+      {name:'train',color:'#5ca8ff',data:state.trainAccHist},
+      {name:'test',color:'#39e6a8',data:state.testAccHist}],
+    {ymin:0,ymax:1,h:150,legend:true,fmt:v=>(v*100).toFixed(0)+'%'});
+}
+
+// Confusion matrix — 10x10 mriežka, farba bunky = počet.
+function buildConfusion(){
+  const el=document.getElementById('cm');el.innerHTML='';
+  el.appendChild(cell('h',''));
+  for(let p=0;p<10;p++)el.appendChild(cell('h',p));
+  for(let t=0;t<10;t++){
+    el.appendChild(cell('h',t));
+    for(let p=0;p<10;p++){
+      const c=document.createElement('div');
+      c.className='cell'+(t===p?' diag':'');
+      c.id='cm_'+t+'_'+p;
+      el.appendChild(c);
+    }
+  }
+  function cell(cls,txt){const d=document.createElement('div');d.className=cls;d.textContent=txt;return d;}
+}
+function drawConfusion(){
+  const cm=state.confusion;
+  let mx=1;for(let i=0;i<100;i++)if(cm[i]>mx)mx=cm[i];
+  for(let t=0;t<10;t++)for(let p=0;p<10;p++){
+    const v=cm[t*10+p];const el=document.getElementById('cm_'+t+'_'+p);
+    const a=v/mx;
+    const col=t===p?[57,230,168]:[255,92,122];
+    el.style.background=v?`rgba(${col[0]},${col[1]},${col[2]},${0.12+a*0.8})`:'#0c1430';
+    el.textContent=v||'';
+  }
+}
+
+// Per-class bary.
+function buildPerClass(){
+  const el=document.getElementById('pcbars');el.innerHTML='';
+  for(let d=0;d<10;d++){
+    const row=document.createElement('div');row.className='pcbar';
+    row.innerHTML=`<span class="lab">${d}</span><div class="track"><div class="fill" id="pc_${d}"></div></div><span class="pct" id="pcp_${d}">—</span>`;
+    el.appendChild(row);
+  }
+}
+function drawPerClass(){
+  for(let d=0;d<10;d++){
+    const a=state.perClassAcc[d];
+    document.getElementById('pc_'+d).style.width=(a*100)+'%';
+    document.getElementById('pcp_'+d).textContent=(a*100).toFixed(0)+'%';
+  }
+}
+
+/* ================================================================================
+   SEKCIA 6 — KRESLIACA PLOCHA (užívateľ kreslí, sieť klasifikuje naživo)
+   ================================================================================ */
+const drawPad=document.getElementById('drawPad');
+const dctx=drawPad.getContext('2d');
+const PAD=280;
+state.drawVec=new Float32Array(PIX);
+let drawing=false;
+function clearPad(){
+  dctx.fillStyle='#05070f';dctx.fillRect(0,0,PAD,PAD);
+  state.drawVec=new Float32Array(PIX);
+  classifyDrawing();
+}
+function padPos(e){
+  const r=drawPad.getBoundingClientRect();
+  const cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+  const cy=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
+  return {x:cx*PAD/r.width, y:cy*PAD/r.height};
+}
+function drawDot(x,y){
+  dctx.fillStyle='#fff';
+  dctx.beginPath();dctx.arc(x,y,12,0,Math.PI*2);dctx.fill();
+  // mäkký okraj
+  const grd=dctx.createRadialGradient(x,y,8,x,y,20);
+  grd.addColorStop(0,'rgba(255,255,255,0.5)');grd.addColorStop(1,'rgba(255,255,255,0)');
+  dctx.fillStyle=grd;dctx.beginPath();dctx.arc(x,y,20,0,Math.PI*2);dctx.fill();
+}
+let lastP=null;
+function strokeTo(p){
+  if(lastP){dctx.strokeStyle='#fff';dctx.lineWidth=24;dctx.lineCap='round';
+    dctx.beginPath();dctx.moveTo(lastP.x,lastP.y);dctx.lineTo(p.x,p.y);dctx.stroke();}
+  drawDot(p.x,p.y);lastP=p;
+}
+// Prevezme obsah plochy → 28x28 vektor (priemerovaním blokov) a klasifikuje.
+function classifyDrawing(){
+  const img=dctx.getImageData(0,0,PAD,PAD).data;
+  const vec=new Float32Array(PIX);
+  const block=PAD/IMG;
+  for(let r=0;r<IMG;r++)for(let c=0;c<IMG;c++){
+    let s=0;
+    for(let yy=0;yy<block;yy++)for(let xx=0;xx<block;xx++){
+      const px=((r*block+yy)|0)*PAD+((c*block+xx)|0);
+      s+=img[px*4]/255;
+    }
+    vec[r*IMG+c]=s/(block*block);
+  }
+  state.drawVec=vec;
+  // Ak je v ploche niečo nakreslené, sledujme ju v diagrame.
+  let sum=0;for(let i=0;i<PIX;i++)sum+=vec[i];
+  if(sum>2){
+    state.watchSample={set:'draw',idx:0};
+    document.getElementById('watchTag').textContent='watching your drawing';
+  }
+  const probs=state.net.forward(vec);
+  updateProbBars(probs);
+}
+drawPad.addEventListener('mousedown',e=>{drawing=true;lastP=null;strokeTo(padPos(e));classifyDrawing();});
+drawPad.addEventListener('mousemove',e=>{if(drawing){strokeTo(padPos(e));classifyDrawing();}});
+window.addEventListener('mouseup',()=>{drawing=false;lastP=null;});
+drawPad.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;lastP=null;strokeTo(padPos(e));classifyDrawing();},{passive:false});
+drawPad.addEventListener('touchmove',e=>{e.preventDefault();if(drawing){strokeTo(padPos(e));classifyDrawing();}},{passive:false});
+window.addEventListener('touchend',()=>{drawing=false;lastP=null;});
+
+// Pravdepodobnostné bary (zdieľané pre kreslenie).
+function buildProbBars(){
+  const el=document.getElementById('drawProbs');el.innerHTML='';
+  for(let d=0;d<10;d++){
+    const row=document.createElement('div');row.className='pbar';row.id='pb_'+d;
+    row.innerHTML=`<span class="lab">${d}</span><div class="track"><div class="fill" id="pbf_${d}"></div></div><span class="pct" id="pbp_${d}">0%</span>`;
+    el.appendChild(row);
+  }
+}
+function updateProbBars(probs){
+  let best=0;for(let d=0;d<10;d++)if(probs[d]>probs[best])best=d;
+  for(let d=0;d<10;d++){
+    document.getElementById('pbf_'+d).style.width=(probs[d]*100)+'%';
+    document.getElementById('pbp_'+d).textContent=(probs[d]*100).toFixed(0)+'%';
+    document.getElementById('pb_'+d).classList.toggle('top',d===best);
+  }
+}
+
+/* ================================================================================
+   SEKCIA 7 — SAMPLE VIEWER + "Watch a prediction" animácia
+   ================================================================================ */
+const sampleCanvas=document.getElementById('sampleCanvas');
+const sctx=sampleCanvas.getContext('2d');
+function refreshSampleViewer(){
+  const ws=state.watchSample;
+  if(ws.set==='draw')return;
+  const X=ws.set==='test'?state.data.testX[ws.idx]:state.data.trainX[ws.idx];
+  const lab=ws.set==='test'?state.data.testY[ws.idx]:state.data.trainY[ws.idx];
+  // vykreslenie 28x28 na 112x112
+  const scale=112/IMG;
+  sctx.fillStyle='#05070f';sctx.fillRect(0,0,112,112);
+  for(let p=0;p<PIX;p++){
+    const v=X[p];if(v<0.04)continue;
+    const g=Math.round(v*255);
+    sctx.fillStyle='rgb('+g+','+g+','+Math.min(255,g+25)+')';
+    sctx.fillRect((p%IMG)*scale,((p/IMG)|0)*scale,scale+0.5,scale+0.5);
+  }
+  const pred=state.net.predict(X);
+  document.getElementById('sampLabel').textContent=lab;
+  const pe=document.getElementById('sampPred');
+  pe.textContent=pred;pe.style.color=pred===lab?'var(--ok)':'var(--bad)';
+  document.getElementById('sampSet').textContent=ws.set+' sample #'+ws.idx;
+  document.getElementById('watchTag').textContent='watching '+ws.set+' #'+ws.idx;
+}
+function nextSample(){
+  const n=state.data.testX.length;
+  state.watchSample={set:'test',idx:(Math.random()*n)|0};
+  refreshSampleViewer();
+}
+
+// "Watch a prediction" — animovaný forward pass vrstvu po vrstve.
+function watchPrediction(){
+  const ws=state.watchSample;
+  if(ws.set==='draw'){toast('Pick a test sample first, or just watch your drawing live.');}
+  getWatchedActivations();
+  state.anim={layer:0,pulse:0,t0:performance.now(),dur:280};
+}
+function updateAnim(now){
+  if(!state.anim)return;
+  const a=state.anim;
+  const k=(now-a.t0)/a.dur;
+  a.pulse=Math.sin(Math.min(1,k)*Math.PI); // 0→1→0 pulz
+  if(k>=1){a.layer++;a.t0=now;a.pulse=0;
+    if(a.layer>=state.net.layers.length){state.anim=null;}}
+}
+
+/* ================================================================================
+   SEKCIA 8 — UI, render slučka, klávesové skratky
+   ================================================================================ */
+function updateStats(){
+  document.getElementById('stEpoch').textContent=state.epoch;
+  document.getElementById('stBatch').textContent=state.batch;
+  document.getElementById('stLoss').textContent=state.lossHist.length?state.lossHist[state.lossHist.length-1].toFixed(3):'—';
+  const ta=state.trainAccHist, te=state.testAccHist;
+  document.getElementById('stTrainAcc').textContent=ta.length?(ta[ta.length-1]*100).toFixed(1)+'%':'—';
+  document.getElementById('stTestAcc').textContent=te.length?(te[te.length-1]*100).toFixed(1)+'%':'—';
+  document.getElementById('stBps').textContent=state.bps;
+}
+function updateArchLabel(){
+  document.getElementById('stArch').textContent=state.arch.join('·');
+}
+
+let evalAccum=0;
+function frame(now){
+  // --- TRÉNING (N batchov za frame, aby UI nezamŕzalo) ---
+  if(state.training){
+    for(let i=0;i<state.speed;i++){trainOneBatch();evalAccum++;}
+    // periodicky prepočítaj presnosť (nie každý batch — je to drahšie)
+    if(evalAccum>=Math.max(8,state.speed*4)){evalAccum=0;evaluateAndRecord();
+      drawConfusion();drawPerClass();
+      if(state.watchSample.set!=='draw')refreshSampleViewer();}
+  }
+  // --- BPS meranie ---
+  if(now-state._bpsT>=1000){
+    state.bps=state._bpsCount;state._bpsCount=0;state._bpsT=now;
+  }
+  // --- animácia forward passu ---
+  updateAnim(now);
+  // --- vykreslenie ---
+  drawNetwork();
+  drawCharts();
+  updateStats();
+  requestAnimationFrame(frame);
+}
+
+function renderAll(){
+  drawNetwork();drawCharts();drawConfusion();drawPerClass();updateStats();
+  if(state.watchSample.set!=='draw')refreshSampleViewer();
+}
+
+// ---- Toast ----
+let toastT;
+function toast(msg){
+  const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');
+  clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),1800);
+}
+
+// ---- Tlačidlá ----
+function setTraining(on){
+  state.training=on;
+  document.getElementById('btnTrain').innerHTML=on
+    ?'<span>⏸ Pause</span><span class="k">Space</span>'
+    :'<span>▶ Train</span><span class="k">Space</span>';
+}
+document.getElementById('btnTrain').onclick=()=>setTraining(!state.training);
+document.getElementById('btnStep').onclick=()=>{trainOneBatch();evaluateAndRecord();renderAll();};
+document.getElementById('btnReset').onclick=()=>{
+  setTraining(false);
+  const regen=(state.perClass!==parseInt(document.getElementById('dssize').value,10));
+  state.perClass=parseInt(document.getElementById('dssize').value,10);
+  initAll(true);
+  document.getElementById('archHint').classList.remove('show');
+  document.getElementById('dsHint').classList.remove('show');
+  toast('Network reinitialized');
+};
+document.getElementById('btnWatch').onclick=watchPrediction;
+document.getElementById('btnNextSample').onclick=nextSample;
+document.getElementById('btnClear').onclick=clearPad;
+
+// ---- Hyperparametre (živé) ----
+const lrEl=document.getElementById('lr');
+lrEl.oninput=()=>{state.lr=Math.pow(10,parseFloat(lrEl.value));
+  document.getElementById('lrVal').textContent=state.lr.toFixed(state.lr<0.01?4:3);};
+const bsEl=document.getElementById('bs');
+bsEl.oninput=()=>{state.batchSize=parseInt(bsEl.value,10);
+  document.getElementById('bsVal').textContent=state.batchSize;};
+document.getElementById('opt').onchange=e=>{state.optimizer=e.target.value;};
+const spEl=document.getElementById('sp');
+spEl.oninput=()=>{state.speed=parseInt(spEl.value,10);
+  document.getElementById('spVal').textContent=state.speed;};
+document.getElementById('arch').oninput=()=>document.getElementById('archHint').classList.add('show');
+document.getElementById('dssize').onchange=()=>document.getElementById('dsHint').classList.add('show');
+
+// ---- Klávesové skratky: Space=train/pause, S=step, R=reset ----
+window.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+  if(e.code==='Space'){e.preventDefault();setTraining(!state.training);}
+  else if(e.key==='s'||e.key==='S'){trainOneBatch();evaluateAndRecord();renderAll();}
+  else if(e.key==='r'||e.key==='R'){document.getElementById('btnReset').click();}
+});
+window.addEventListener('resize',()=>renderAll());
+
+/* ================================================================================
+   ŠTART
+   ================================================================================ */
+// počiatočné hodnoty z UI
+state.lr=Math.pow(10,parseFloat(lrEl.value));
+document.getElementById('lrVal').textContent=state.lr.toFixed(3);
+state.batchSize=parseInt(bsEl.value,10);
+state.optimizer=document.getElementById('opt').value;
+state.speed=parseInt(spEl.value,10);
+state.perClass=parseInt(document.getElementById('dssize').value,10);
+
+initAll(true);
+clearPad();
+requestAnimationFrame(frame);
+toast('Ready — press Space to train');
+</script>
+</body>
+</html>
